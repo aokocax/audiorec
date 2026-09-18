@@ -1,0 +1,98 @@
+# audiorec - tek yapilandirma dosyasi
+# Donanima bagli hicbir secim koda gomulu degildir; hepsi buradadir.
+# Profil secimi: start.ps1 -Profile <ad>  /  start.sh <ad>  /  AUDIOREC_PROFILE=<ad>
+
+profile: dev-6gb            # varsayilan profil
+
+server:
+  host: 0.0.0.0             # 127.0.0.1 = sadece bu makine. 0.0.0.0 = yerel agdaki cihazlar da (ssl.enabled ZORUNLU:
+                            # tarayicilar mikrofonu sadece localhost ya da HTTPS'te acar; ayrica guvenlik duvari kurali gerekir,
+                            # bkz. service/firewall-allow.ps1). Internete acma; LAN disi icin SSH tuneli (README).
+  port: 8000
+  ssl:
+    enabled: true           # certs/ altindaki kendinden imzali sertifika: python tools/make_cert.py
+    certfile: certs/audiorec.crt
+    keyfile: certs/audiorec.key
+  allow_insecure_lan: false # true yapma: TLS'siz LAN'da ses duz metin gider ve mikrofon zaten acilmaz
+  api_token: ""             # bos = kapali. Dolu ise websocket ?token=... ister (LAN'da yetkisiz kullanimi engeller)
+  language: tr              # Whisper dil kodu; "auto" = otomatik algilama
+  log_level: WARNING        # DEBUG/INFO seviyeleri transkript metnini loga yazabilir; WARNING'de kalsin
+  warmup_file: ""           # "" = warmup kapali. Bos birakilmazsa WLK internetten jfk.wav indirip temp'e yazar (ses diske yazma yasagi).
+  pcm_input: true           # tarayici AudioWorklet ile ham PCM gonderir; ffmpeg gerekmez, kullanilmaz
+  min_chunk_size: 0.5       # saniye; kucuk = dusuk gecikme, yuksek GPU yuku
+  retention_seconds: null   # null = oturum boyunca bellekte tut (full mode); sadece RAM, diske yazilmaz
+  offline: true             # true: HF_HUB_OFFLINE=1, hicbir dis baglanti denenmez. Yeni bir model gerektiren profile
+                            # gecerken (indirme icin) gecici olarak false yap, indirme bitince tekrar true.
+  model_dir: models         # model onbellegi (proje icinde, tasinabilir). Ses burada tutulmaz, sadece agirliklar.
+  extra_args: []            # wlk serve icin ek bayraklar, ornegin ["--beams", "2"]
+
+# Butun profillere uygulanan varsayilanlar (profil ici degerler bunlari ezer)
+profile_defaults:
+  backend: faster-whisper       # faster-whisper | whisper (PyTorch)
+  policy: localagreement        # localagreement | simulstreaming
+  compute_type: auto            # faster-whisper/CTranslate2: float16 | int8_float16 | int8 | float32 | auto
+  disable_fast_encoder: false   # simulstreaming: true -> CTranslate2 encoder kullanma (daha az VRAM, daha yavas)
+  diarization: false
+  diarization_backend: diart    # diart (pyannote, HF token gerekir) | sortformer (NeMo; Windows'ta kurulmadi)
+  diarization_device: cuda      # cuda | cpu   (sadece diart icin uygulanir)
+  device: cuda                  # cuda | cpu  (ASR; cpu sadece acil durum, cok yavas)
+  vram_required_mb: 0           # bench ile olculen tepe VRAM + pay. check_gpu bunu bos VRAM ile karsilastirir.
+  tested: false
+
+profiles:
+  dev-6gb:
+    description: "RTX 2060 6 GB (Turing, fp16/int8). large-v3-turbo, faster-whisper int8_float16, diarization kapali."
+    tested: true
+    model: large-v3-turbo
+    backend: faster-whisper
+    policy: localagreement
+    compute_type: int8_float16
+    diarization: false
+    diarization_device: cpu
+    vram_required_mb: 1800      # olcum 2026-09-18: model ~0.85-1.2 GB, tepe fark ~1.1-1.5 GB (+pay)
+
+  dev-6gb-large:
+    description: "6 GB kartta large-v3 int8 (daha dogru, daha yavas). Diarization kapali."
+    tested: true
+    model: large-v3
+    backend: faster-whisper
+    policy: localagreement
+    compute_type: int8_float16
+    diarization: false
+    vram_required_mb: 2500      # olcum 2026-09-18: model ~1.5 GB, tepe fark ~1.9 GB (+pay)
+
+  dev-6gb-simul:
+    description: "OLCULDU, ONERILMEZ: SimulStreaming (PyTorch decoder + CT2 encoder) turbo 6 GB'da 3.9 GB aliyor, GPU dolunca gecikme 20 s+."
+    tested: true
+    model: large-v3-turbo
+    backend: whisper
+    policy: simulstreaming
+    compute_type: int8_float16
+    disable_fast_encoder: false
+    diarization: false
+    vram_required_mb: 4500      # olcum 2026-09-18: tepe fark 3.9 GB (toplam 5.7/6 GB). Ekran bagliyken sigmaz.
+
+  mid-12gb:
+    description: "12 GB kart (RTX 3060 12G / 4070 vb.). large-v3 fp16, diarization GPU'da. TEST EDILMEDI."
+    tested: false
+    model: large-v3
+    backend: faster-whisper
+    policy: localagreement
+    compute_type: float16
+    diarization: true
+    diarization_backend: diart
+    diarization_device: cuda
+    vram_required_mb: 7000      # tahmin: large-v3 fp16 ~4.5 GB + diart ~1 GB + pay
+
+  high-24gb:
+    description: "24 GB kart (RTX 3090/4090/A5000). large-v3 fp16, SimulStreaming (en dusuk gecikme), diarization GPU'da. TEST EDILMEDI."
+    tested: false
+    model: large-v3
+    backend: whisper              # SimulStreaming PyTorch decoder + CTranslate2 encoder
+    policy: simulstreaming
+    compute_type: float16
+    disable_fast_encoder: false
+    diarization: true
+    diarization_backend: diart
+    diarization_device: cuda
+    vram_required_mb: 12000     # tahmin: PyTorch large-v3 fp16 ~3.5 GB + CT2 encoder ~3 GB + diart + aktivasyon

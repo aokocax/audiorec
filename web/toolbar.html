@@ -1,0 +1,75 @@
+<!-- audiorec: kopyala / .txt indir arac cubugu (server.py bunu WLK arayuzune enjekte eder) -->
+<div id="arToolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 4px 0;font-size:14px">
+  <button id="arCopy" type="button" style="padding:6px 12px;border-radius:8px;border:1px solid #8884;cursor:pointer">Kopyala</button>
+  <button id="arDownload" type="button" style="padding:6px 12px;border-radius:8px;border:1px solid #8884;cursor:pointer">.txt indir</button>
+  <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input id="arTimestamps" type="checkbox"> zaman damgasi</label>
+  <span id="arInfo" style="opacity:.7"></span>
+  <span id="arProfile" style="opacity:.6;margin-left:auto"></span>
+</div>
+<script>
+(function () {
+  const toSec = (t) => {
+    if (t === undefined || t === null) return NaN;
+    if (typeof t === "number") return t;
+    const parts = String(t).trim().split(":").map(Number);      // WLK: "0:00:07.82"
+    if (parts.some(isNaN)) return NaN;
+    return parts.reduce((acc, v) => acc * 60 + v, 0);
+  };
+  const fmt = (t) => {
+    const sec = toSec(t);
+    if (isNaN(sec)) return "--:--";
+    const s = Math.max(0, Math.floor(sec));
+    return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  };
+  // Transkript sadece tarayici belleginde: sunucunun her mesajda gonderdigi tam 'lines' listesi (lastReceivedData).
+  function transcriptText() {
+    const withTs = document.getElementById("arTimestamps").checked;
+    let data = null;
+    try { data = lastReceivedData; } catch (e) { data = null; }
+    const out = [];
+    if (data && Array.isArray(data.lines)) {
+      for (const it of data.lines) {
+        if (!it || it.speaker === -2 || it.speaker === 0) continue;      // -2: sessizlik isareti, 0: yukleniyor
+        const text = (it.text || "").trim();
+        if (!text) continue;
+        const who = (typeof it.speaker === "number" && it.speaker > 0) ? "Konusmaci " + it.speaker + ": " : "";
+        const ts = withTs ? "[" + fmt(it.start) + "-" + fmt(it.end) + "] " : "";
+        out.push(ts + who + text);
+      }
+      const buf = (data.buffer_transcription || "").trim();
+      if (buf) out.push((withTs ? "[...] " : "") + buf);
+    } else {
+      const div = document.getElementById("linesTranscript");
+      if (div) out.push(div.innerText.trim());
+    }
+    return out.join("\n");
+  }
+  function stamp() {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+  }
+  const info = document.getElementById("arInfo");
+  document.getElementById("arCopy").addEventListener("click", async () => {
+    const t = transcriptText();
+    try { await navigator.clipboard.writeText(t); info.textContent = "kopyalandi (" + t.length + " karakter)"; }
+    catch (e) { info.textContent = "kopyalama basarisiz: " + e; }
+    setTimeout(() => (info.textContent = ""), 3000);
+  });
+  document.getElementById("arDownload").addEventListener("click", () => {
+    const t = transcriptText();
+    const blob = new Blob([t + "\n"], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "transkript-" + stamp() + ".txt";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    info.textContent = "indirildi (" + t.length + " karakter)";
+    setTimeout(() => (info.textContent = ""), 3000);
+  });
+  fetch("/profile").then((r) => r.json()).then((p) => {
+    document.getElementById("arProfile").textContent =
+      "profil: " + p.profile + " | " + p.model + " " + (p.compute_type || "") + " | " + p.policy +
+      (p.diarization ? " | diarization" : "") + " | dil: " + p.language;
+  }).catch(() => {});
+})();
+</script>

@@ -1,0 +1,8 @@
+# Sabitlenmemis ust-duzey bagimliliklar. Cozumlenmis hali: requirements.lock
+whisperlivekit==0.2.26
+torch==2.8.0
+torchaudio==2.8.0
+pyyaml>=6.0
+websockets>=13
+numpy
+cryptography>=43      # tools/make_cert.py (kendinden imzali TLS sertifikasi)

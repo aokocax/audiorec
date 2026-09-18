@@ -1,0 +1,28 @@
+# audiorec - systemd birimi (Linux). VARSAYILAN OLARAK ETKIN DEGIL. TEST EDILMEDI.
+# Kurulum:
+#   sudo cp service/audiorec.service /etc/systemd/system/audiorec.service
+#   # WorkingDirectory / User / ExecStart yollarini kendi kurulumuna gore duzenle
+#   sudo systemctl daemon-reload
+#   sudo systemctl start audiorec          # tek seferlik
+#   sudo systemctl enable audiorec         # acilista baslasin istiyorsan (bilincli karar)
+# Profil: Environment=AUDIOREC_PROFILE=... satirini degistir (server.py bunu okur).
+[Unit]
+Description=audiorec - yerel canli transkript (WhisperLiveKit)
+After=network.target
+
+[Service]
+Type=simple
+User=CHANGE_ME
+WorkingDirectory=/opt/audiorec
+Environment=AUDIOREC_PROFILE=dev-6gb
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+Environment=DO_NOT_TRACK=1
+ExecStart=/opt/audiorec/.venv/bin/python /opt/audiorec/server.py
+Restart=on-failure
+RestartSec=5
+# gizlilik: ses hicbir zaman diske yazilmaz; yine de /tmp'yi sureç-özel yap
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
